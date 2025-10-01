@@ -7,13 +7,10 @@ param(
 )
 $Content = Get-Content -Path $InputFile -Raw -Encoding UTF8
 # Convert
-# Returns
-$content = [regex]::Replace($content, '^$', ' \\  \\', 'Multiline')
-
 # H1-H6
 $content = [regex]::Replace($content, '^(#{1,6})\s+(.+)$', {
    $level = $args[0].Groups[1].Value.Length
-   "h$level. " + $args[0].Groups[2].Value
+   "h$level. " + "**" + $args[0].Groups[2].Value + "**"
 }, 'Multiline')
 # Italic text (*text* → _text_)
 $content = [regex]::Replace($content, '(?<!\*)\*([^*]+)\*(?!\*)', '_$1_', 'Multiline')
@@ -98,7 +95,7 @@ function Convert-CalloutsAndQuotes {
                'INFO'     = 'borderColor=#2196f3|titleBGColor=#e3f2fd|bgColor=#f8fdff'
                'NOTE'     = 'borderColor=#2196f3|titleBGColor=#e3f2fd|bgColor=#f8fdff'
                'TIP'      = 'borderColor=#39b9d3|titleBGColor=#e3f9fc|bgColor=#f7feff'
-               'SUCCESS'  = 'borderColor=#96e25f|titleBGColor=#edfce3|bgColor=#fafff7'
+               'SUCCESS'  = 'borderColor=#6fd339|titleBGColor=#edfce3|bgColor=#fafff7'
                'QUESTION' = 'borderColor=#8b6bd3|titleBGColor=#e9e3fc|bgColor=#f8f7ff'
                'CAUTION'  = 'borderColor=#ff9800|titleBGColor=#fff3e0|bgColor=#fffbf5'
                'WARNING'  = 'borderColor=#ff9800|titleBGColor=#fff3e0|bgColor=#fffbf5'

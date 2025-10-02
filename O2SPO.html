@@ -87,7 +87,14 @@
         .copy-btn:hover {
             background-color: #45a049;
         }
-        .copy-btn.copied {
+        .copy-rich-btn {
+            background-color: #9C27B0;
+            color: white;
+        }
+        .copy-rich-btn:hover {
+            background-color: #7B1FA2;
+        }
+        .copy-btn.copied, .copy-rich-btn.copied {
             background-color: #8BC34A;
         }
         .info-box {
@@ -110,6 +117,11 @@
             padding: 5px 0;
             color: #666;
         }
+        #richPreview {
+            display: none;
+            position: absolute;
+            left: -9999px;
+        }
         @media (max-width: 900px) {
             .grid {
                 grid-template-columns: 1fr;
@@ -119,7 +131,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>📝 Obsidian → SharePoint HTML変換ツール</h1>
+        <h1>📝 Obsidian → SharePoint変換ツール</h1>
         
         <div class="grid">
             <div class="column">
@@ -135,7 +147,8 @@
         
         <div class="button-group">
             <button class="convert-btn" onclick="convertMarkdown()">🔄 変換する</button>
-            <button class="copy-btn" id="copyBtn" onclick="copyToClipboard()">📋 HTMLをコピー</button>
+            <button class="copy-btn" id="copyBtn" onclick="copyToClipboard()">📋 HTMLをコピー（Classic用）</button>
+            <button class="copy-rich-btn" id="copyRichBtn" onclick="copyAsRichText()">✨ リッチテキストでコピー（Modern用）</button>
         </div>
         
         <div class="info-box">
@@ -149,13 +162,17 @@
                 <li>✔️ Quote (> text) - 引用ブロック</li>
                 <li>✔️ リスト (箇条書き・番号付き)</li>
                 <li>✔️ コードブロックとインラインコード</li>
-                <li>✔️ リンク</li>
+                <li>✔️ リンク（URL内の括弧にも対応）</li>
+                <li>✔️ 内部リンク [[ページ名]] と [[ページ名|表示名]]</li>
             </ul>
             <p style="margin-top: 15px; color: #666;">
-                <strong>使い方:</strong> SharePoint Classic Wikiの編集画面で「HTMLの編集」ボタン（&lt;&gt;アイコン）をクリックし、生成されたHTMLを貼り付けてください。
+                <strong>Classic Wiki:</strong> 「HTMLをコピー」→ SharePointの「HTMLの編集」ボタン（&lt;&gt;）から貼り付け<br>
+                <strong>Modern Page:</strong> 「リッチテキストでコピー」→ テキストWebパーツに直接 Ctrl+V で貼り付け
             </p>
         </div>
     </div>
+    
+    <div id="richPreview"></div>
 
     <script>
         function convertMarkdown() {
@@ -290,75 +307,92 @@
             let placeholderIndex = 0;
             
             // リンク [表示テキスト](URL) - URL内の括弧に対応
-            result = result.replace(/\[([^\]]+)\]\(((?:[^()]+|\([^)]*\))*)\)/g, (match, text, url) => {
-              const placeholder = `__LINK_${placeholderIndex}__`;
-              linkPlaceholders.push(`<a href="${url}" style="color: #2196F3; text-decoration: none;">${text}</a>`);
-              placeholderIndex++;
-              return placeholder;
+            result = result.replace(/\[([^\]]+)\]\(((?:[^()]+|\([^)]*\))*)\)/g, function(match, text, url) {
+                const placeholder = '__LINK_' + placeholderIndex + '__';
+                linkPlaceholders.push('<a href="' + url + '" style="color: #2196F3; text-decoration: none;">' + text + '</a>');
+                placeholderIndex++;
+                return placeholder;
             });
             
             // 内部リンク with alias [[ページ名|表示名]]
-            result = result.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, (match, page, display) => {
-              const placeholder = `__LINK_${placeholderIndex}__`;
-              linkPlaceholders.push(`<a href="${page}" class="internal-link">${display}</a>`);
-              placeholderIndex++;
-              return placeholder;
+            result = result.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, function(match, page, display) {
+                const placeholder = '__LINK_' + placeholderIndex + '__';
+                linkPlaceholders.push('<a href="' + page + '" style="color: #2196F3; text-decoration: none;">' + display + '</a>');
+                placeholderIndex++;
+                return placeholder;
             });
             
             // 内部リンク [[ページ名]]
-            result = result.replace(/\[\[([^\]]+)\]\]/g, (match, page) => {
-              const placeholder = `__LINK_${placeholderIndex}__`;
-              linkPlaceholders.push(`<a href="${page}" class="internal-link">${page}</a>`);
-              placeholderIndex++;
-              return placeholder;
-            });
-            
-            // イタリック *text* または _text_ (単語境界を考慮)
-            result = result.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-            result = result.replace(/\b_([^_]+)_\b/g, '<em>$1</em>');
-            
-            // リンクのプレースホルダーを元に戻す
-            linkPlaceholders.forEach((link, index) => {
-              result = result.replace(`__LINK_${index}__`, link);
+            result = result.replace(/\[\[([^\]]+)\]\]/g, function(match, page) {
+                const placeholder = '__LINK_' + placeholderIndex + '__';
+                linkPlaceholders.push('<a href="' + page + '" style="color: #2196F3; text-decoration: none;">' + page + '</a>');
+                placeholderIndex++;
+                return placeholder;
             });
 
-            // リスト処理
+            // 斜体
+            result = result.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+            result = result.replace(/\b_([^_]+)_\b/g, '<em>$1</em>');
+
+            // リンクのプレースホルダーを元に戻す
+            for (let q = 0; q < linkPlaceholders.length; q++) {
+                result = result.replace('__LINK_' + q + '__', linkPlaceholders[q]);
+            }
+
+            // リスト処理（ネスト対応）
             const listLines = result.split('\n');
-            let inList = false;
-            let listType = null;
             const processed = [];
+            const listStack = []; // ネストレベルを管理
             
             for (let m = 0; m < listLines.length; m++) {
                 const line = listLines[m];
-                const ulMatch = line.match(/^[\*\-]\s+(.+)$/);
-                const olMatch = line.match(/^\d+\.\s+(.+)$/);
                 
-                if (ulMatch) {
-                    if (!inList || listType !== 'ul') {
-                        if (inList) processed.push('</' + listType + '>');
-                        processed.push('<ul style="margin: 10px 0; padding-left: 30px;">');
-                        listType = 'ul';
-                        inList = true;
+                // インデントレベルを計算（タブは4スペース相当）
+                const indentMatch = line.match(/^(\t+|\s+)/);
+                const indent = indentMatch ? indentMatch[1].replace(/\t/g, '    ').length / 2 : 0;
+                
+                // リストアイテムのマッチ（インデント除去後）
+                const cleanLine = line.replace(/^[\t\s]+/, '');
+                const ulMatch = cleanLine.match(/^[\*\-]\s+(.+)$/);
+                const olMatch = cleanLine.match(/^\d+\.\s+(.+)$/);
+                
+                if (ulMatch || olMatch) {
+                    const content = ulMatch ? ulMatch[1] : olMatch[1];
+                    const listType = ulMatch ? 'ul' : 'ol';
+                    
+                    // 現在のネストレベルより深い場合
+                    while (listStack.length < indent + 1) {
+                        processed.push('<' + listType + ' style="margin: 10px 0; padding-left: 30px;">');
+                        listStack.push(listType);
                     }
-                    processed.push('<li>' + ulMatch[1] + '</li>');
-                } else if (olMatch) {
-                    if (!inList || listType !== 'ol') {
-                        if (inList) processed.push('</' + listType + '>');
-                        processed.push('<ol style="margin: 10px 0; padding-left: 30px;">');
-                        listType = 'ol';
-                        inList = true;
+                    
+                    // 現在のネストレベルより浅い場合、または異なるタイプの場合
+                    while (listStack.length > indent + 1) {
+                        processed.push('</' + listStack.pop() + '>');
                     }
-                    processed.push('<li>' + olMatch[1] + '</li>');
+                    
+                    // 同じレベルで異なるリストタイプの場合
+                    if (listStack.length > 0 && listStack[listStack.length - 1] !== listType) {
+                        processed.push('</' + listStack.pop() + '>');
+                        processed.push('<' + listType + ' style="margin: 10px 0; padding-left: 30px;">');
+                        listStack.push(listType);
+                    }
+                    
+                    processed.push('<li>' + content + '</li>');
                 } else {
-                    if (inList) {
-                        processed.push('</' + listType + '>');
-                        inList = false;
-                        listType = null;
+                    // リストアイテムでない場合、全てのリストを閉じる
+                    while (listStack.length > 0) {
+                        processed.push('</' + listStack.pop() + '>');
                     }
                     processed.push(line);
                 }
             }
-            if (inList) processed.push('</' + listType + '>');
+            
+            // 最後に残っているリストを閉じる
+            while (listStack.length > 0) {
+                processed.push('</' + listStack.pop() + '>');
+            }
+            
             result = processed.join('\n');
 
             // 段落（空行をbrに）
@@ -376,16 +410,61 @@
             
             navigator.clipboard.writeText(htmlText).then(function() {
                 const btn = document.getElementById('copyBtn');
+                const originalText = btn.textContent;
                 btn.textContent = '✅ コピー完了！';
                 btn.classList.add('copied');
                 
                 setTimeout(function() {
-                    btn.textContent = '📋 HTMLをコピー';
+                    btn.textContent = originalText;
                     btn.classList.remove('copied');
                 }, 2000);
             }).catch(function(err) {
                 alert('コピーに失敗しました: ' + err);
             });
+        }
+
+        function copyAsRichText() {
+            const htmlText = document.getElementById('html').value;
+            if (!htmlText) {
+                alert('まず変換してください！');
+                return;
+            }
+
+            // HTMLをDOMに描画してリッチテキストとしてコピー
+            const richPreview = document.getElementById('richPreview');
+            richPreview.innerHTML = htmlText;
+            richPreview.style.display = 'block';
+            richPreview.style.position = 'static';
+
+            // 範囲を選択
+            const range = document.createRange();
+            range.selectNodeContents(richPreview);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+
+            try {
+                // リッチテキストとしてコピー
+                document.execCommand('copy');
+                
+                const btn = document.getElementById('copyRichBtn');
+                const originalText = btn.textContent;
+                btn.textContent = '✅ コピー完了！';
+                btn.classList.add('copied');
+                
+                setTimeout(function() {
+                    btn.textContent = originalText;
+                    btn.classList.remove('copied');
+                }, 2000);
+            } catch (err) {
+                alert('コピーに失敗しました。Ctrl+Cを手動で押してみてください。');
+            } finally {
+                // 選択を解除して非表示に戻す
+                selection.removeAllRanges();
+                richPreview.style.display = 'none';
+                richPreview.style.position = 'absolute';
+                richPreview.style.left = '-9999px';
+            }
         }
     </script>
 </body>

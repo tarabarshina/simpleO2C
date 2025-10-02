@@ -138,12 +138,18 @@ $content = Convert-CalloutsAndQuotes $content
 # リンクの段階的な変換
 function Convert-ObsidianLinks {
    param([string]$content)
-   # 1. 最も単純なケース（記号なし）
-   $content = [regex]::Replace($content, '\[([a-zA-Z0-9\s\-_]+)\]\(([^)]+)\)', '[$1|$2]', 'Multiline')
-   # 2. 括弧を含むケース
-   $content = [regex]::Replace($content, '\[([^\[\]]+)\]\(([^()]*(?:\([^()]*\)[^()]*)*)\)', '[$1|$2]', 'Multiline')
-   # 3. 角括弧を含むケース
-   $content = [regex]::Replace($content, '\[([^\[\]]*(?:\[[^\[\]]*\][^\[\]]*)*)\]\(([^)]+)\)', '[$1|$2]', 'Multiline')
+   # Obsidianのリンク形式 [表示テキスト](URL) を Confluence形式 [表示テキスト|URL] に変換
+   # 入れ子の括弧や特殊文字に対応
+   $content = [regex]::Replace($content,
+       '\[(?<text>(?:[^\[\]]|\[(?:[^\[\]]|\[[^\[\]]*\])*\])*)\]\((?<url>(?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)',
+       {
+           param($match)
+           $text = $match.Groups['text'].Value
+           $url = $match.Groups['url'].Value
+           return "[$text|$url]"
+       },
+       'Multiline'
+   )
    return $content
 }
 $content = Convert-ObsidianLinks $content

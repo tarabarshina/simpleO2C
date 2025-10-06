@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Obsidian → Confluence変換</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .column {
+            display: flex;
+            flex-direction: column;
+        }
+        label {
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #555;
+            font-size: 16px;
+        }
+        textarea {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 13px;
+            resize: vertical;
+            min-height: 400px;
+        }
+        textarea:focus {
+            outline: none;
+            border-color: #0052CC;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        button {
+            flex: 1;
+            padding: 15px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .convert-btn {
+            background-color: #0052CC;
+            color: white;
+        }
+        .convert-btn:hover {
+            background-color: #0747A6;
+        }
+        .copy-btn {
+            background-color: #00875A;
+            color: white;
+        }
+        .copy-btn:hover {
+            background-color: #006644;
+        }
+        .copy-btn.copied {
+            background-color: #36B37E;
+        }
+        .info-box {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f9f9f9;
+            border-left: 4px solid #0052CC;
+            border-radius: 4px;
+        }
+        .info-box h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        .info-box ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        .info-box li {
+            padding: 5px 0;
+            color: #666;
+        }
+        @media (max-width: 900px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📝 Obsidian → Confluence マークアップ変換ツール</h1>
+        
+        <div class="grid">
+            <div class="column">
+                <label for="markdown">Obsidian Markdown</label>
+                <textarea id="markdown" placeholder="Obsidianのマークダウンを貼り付けてください..."></textarea>
+            </div>
+            
+            <div class="column">
+                <label for="confluence">Confluence マークアップ</label>
+                <textarea id="confluence" readonly placeholder="変換されたConfluenceマークアップがここに表示されます..."></textarea>
+            </div>
+        </div>
+        
+        <div class="button-group">
+            <button class="convert-btn" onclick="convertToConfluence()">🔄 変換する</button>
+            <button class="copy-btn" id="copyBtn" onclick="copyToClipboard()">📋 コピー</button>
+        </div>
+        
+        <div class="info-box">
+            <h2>✅ 対応している機能</h2>
+            <ul>
+                <li>✔️ 見出し (# → h1. **text**)</li>
+                <li>✔️ 太字 (**text** → *text*)</li>
+                <li>✔️ 斜体 (*text* → _text_)</li>
+                <li>✔️ 打ち消し線 (~~text~~ → -text-)</li>
+                <li>✔️ テーブル (Confluence形式に変換)</li>
+                <li>✔️ Callouts → {panel} マクロ（色付き）</li>
+                <li>✔️ Quote (> text → {quote})</li>
+                <li>✔️ ネストされたリスト (# と * でレベル表示)</li>
+                <li>✔️ コードブロック (``` → {code})</li>
+                <li>✔️ インラインコード (` → {{}})</li>
+                <li>✔️ リンク ([text](url) → [text|url])</li>
+            </ul>
+            <p style="margin-top: 15px; color: #666;">
+                <strong>使い方:</strong> Confluenceのエディタで「マークアップを挿入」を選択し、変換されたテキストを貼り付けてください。
+            </p>
+        </div>
+    </div>
+
+    <script>
+        function convertToConfluence() {
+            const markdown = document.getElementById('markdown').value;
+            let result = markdown;
+
+            // 見出し変換 (# → h1. **text**)
+            result = result.replace(/^(#{1,6})\s+(.+)$/gm, function(match, hashes, text) {
+                const level = hashes.length;
+                return 'h' + level + '. **' + text + '**';
+            });
+
+            // 斜体変換 (*text* → _text_)
+            result = result.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '_$1_');
+
+            // 太字変換 (**text** → *text*)
+            result = result.replace(/\*\*([^*]+)\*\*/g, '*$1*');
+
+            // 打ち消し線 (~~text~~ → -text-)
+            result = result.replace(/~~([^~]+)~~/g, '-$1-');
+
+            // Calloutsとquotesの変換
+            result = convertCalloutsAndQuotes(result);
+
+            // テーブル変換
+            result = convertObsidianTables(result);
+
+            // リンク変換
+            result = convertObsidianLinks(result);
+
+            // ネストされたリスト変換
+            result = convertNestedLists(result, 4);
+
+            // コードブロック変換
+            result = result.replace(/```$/gm, '{code}');
+            result = result.replace(/```([^\n`]+)$/gm, '{code:$1}');
+
+            // インラインコード変換
+            result = result.replace(/`([^`]+)`/g, '{{$1}}');
+
+            document.getElementById('confluence').value = result;
+        }
+
+        function convertCalloutsAndQuotes(content) {
+            const lines = content.split('\n');
+            const result = [];
+            let i = 0;
+
+            while (i < lines.length) {
+                const line = lines[i];
+
+                // Calloutの開始を検出
+                const calloutMatch = line.match(/^>\s*\[!(INFO|NOTE|TIP|SUCCESS|QUESTION|CAUTION|FAILURE|WARNING|DANGER|BUG|EXAMPLE|QUOTE)\]\s*(.*)$/i);
+
+                if (calloutMatch) {
+                    const calloutType = calloutMatch[1].toUpperCase();
+                    const title = calloutMatch[2].trim();
+
+                    const styles = {
+                        'INFO': 'borderColor=#2196f3|titleBGColor=#e3f2fd|bgColor=#f8fdff',
+                        'NOTE': 'borderColor=#2196f3|titleBGColor=#e3f2fd|bgColor=#f8fdff',
+                        'TIP': 'borderColor=#39b9d3|titleBGColor=#e3f9fc|bgColor=#f7feff',
+                        'SUCCESS': 'borderColor=#6fd339|titleBGColor=#edfce3|bgColor=#fafff7',
+                        'QUESTION': 'borderColor=#8b6bd3|titleBGColor=#e9e3fc|bgColor=#f8f7ff',
+                        'CAUTION': 'borderColor=#ff9800|titleBGColor=#fff3e0|bgColor=#fffbf5',
+                        'WARNING': 'borderColor=#ff9800|titleBGColor=#fff3e0|bgColor=#fffbf5',
+                        'FAILURE': 'borderColor=#f22121|titleBGColor=#ffe0e0|bgColor=#fff4f4',
+                        'DANGER': 'borderColor=#f22121|titleBGColor=#ffe0e0|bgColor=#fff4f4',
+                        'BUG': 'borderColor=#f22121|titleBGColor=#ffe0e0|bgColor=#fff4f4',
+                        'EXAMPLE': 'borderColor=#c57cd6|titleBGColor=#f6e3fc|bgColor=#fcf7ff',
+                        'QUOTE': 'borderColor=#9e9e9e|titleBGColor=#f5f5f5|bgColor=#fafafa'
+                    };
+
+                    let panelParams = styles[calloutType] || styles['INFO'];
+                    if (title !== '') {
+                        panelParams = 'title=' + title + '|' + panelParams;
+                    }
+
+                    result.push('{panel:' + panelParams + '}');
+                    i++;
+
+                    // Calloutの本文を収集
+                    while (i < lines.length && lines[i].match(/^>\s*([^\[].*|$)/)) {
+                        const bodyLine = lines[i].replace(/^>\s*/, '');
+                        result.push(bodyLine);
+                        i++;
+                    }
+
+                    result.push('{panel}');
+                } else if (line.match(/^>\s*([^\[].*|$)/)) {
+                    // 通常の引用行
+                    const quoteText = line.replace(/^>\s*/, '');
+                    result.push('{quote}' + quoteText + '{quote}');
+                    i++;
+                } else {
+                    result.push(line);
+                    i++;
+                }
+            }
+
+            return result.join('\n');
+        }
+
+        function convertObsidianTables(content) {
+            // テーブルブロックを変換
+            return content.replace(/^\|(.+)\|\n\|[\s:|-]+\|\n((?:\|.+\|\n?)+)/gm, function(match, header, rows) {
+                // ヘッダー行の変換
+                const headerCells = header.split('|').map(function(cell) { return cell.trim(); }).filter(function(cell) { return cell !== ''; });
+                const confluenceHeader = '|| ' + headerCells.join(' || ') + ' ||';
+
+                // データ行の変換
+                const dataLines = rows.trim().split('\n');
+                const confluenceData = dataLines.map(function(line) {
+                    if (line.match(/^\|.*\|$/)) {
+                        const cells = line.replace(/^\||\|$/g, '').split('|').map(function(cell) { return cell.trim(); });
+                        return '| ' + cells.join(' | ') + ' |';
+                    }
+                    return '';
+                }).filter(function(line) { return line !== ''; });
+
+                return confluenceHeader + '\n' + confluenceData.join('\n');
+            });
+        }
+
+        function convertObsidianLinks(content) {
+            // リンク変換 [text](url) → [text|url]
+            return content.replace(/\[([^\]]+)\]\(((?:[^()]+|\([^)]*\))*)\)/g, function(match, text, url) {
+                return '[' + text + '|' + url + ']';
+            });
+        }
+
+        function convertNestedLists(content, indentSize) {
+            const lines = content.split('\n');
+            const result = [];
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+
+                // 番号付きリスト
+                const olMatch = line.match(/^(\s*)\d+\.\s+(.+)$/);
+                if (olMatch) {
+                    const indent = olMatch[1].replace(/\t/g, '    ');
+                    const text = olMatch[2];
+                    const level = Math.max(1, Math.floor(indent.length / indentSize) + 1);
+                    result.push('#'.repeat(level) + ' ' + text);
+                    continue;
+                }
+
+                // 箇条書きリスト
+                const ulMatch = line.match(/^(\s*)[-*+]\s+(.+)$/);
+                if (ulMatch) {
+                    const indent = ulMatch[1].replace(/\t/g, '    ');
+                    const text = ulMatch[2];
+                    const level = Math.max(1, Math.floor(indent.length / indentSize) + 1);
+                    result.push('*'.repeat(level) + ' ' + text);
+                    continue;
+                }
+
+                result.push(line);
+            }
+
+            return result.join('\n');
+        }
+
+        function copyToClipboard() {
+            const confluenceText = document.getElementById('confluence').value;
+            if (!confluenceText) {
+                alert('まず変換してください！');
+                return;
+            }
+
+            navigator.clipboard.writeText(confluenceText).then(function() {
+                const btn = document.getElementById('copyBtn');
+                const originalText = btn.textContent;
+                btn.textContent = '✅ コピー完了！';
+                btn.classList.add('copied');
+
+                setTimeout(function() {
+                    btn.textContent = originalText;
+                    btn.classList.remove('copied');
+                }, 2000);
+            }).catch(function(err) {
+                alert('コピーに失敗しました: ' + err);
+            });
+        }
+    </script>
+</body>
+</html>

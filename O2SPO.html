@@ -149,6 +149,8 @@
             <button class="convert-btn" onclick="convertMarkdown()">🔄 変換する</button>
             <button class="copy-btn" id="copyBtn" onclick="copyToClipboard()">📋 HTMLをコピー（Classic用）</button>
             <button class="copy-rich-btn" id="copyRichBtn" onclick="copyAsRichText()">✨ リッチテキストでコピー（Modern用）</button>
+            <button class="copy-btn" id="copyTocBtn" onclick="copyTableOfContents()" style="background-color: #FF9800;">📑 目次HTMLをコピー</button>
+            <button class="copy-rich-btn" id="copyTocRichBtn" onclick="copyTableOfContentsRich()" style="background-color: #FF6F00;">📑 目次リッチコピー</button>
         </div>
         
         <div class="info-box">
@@ -164,6 +166,7 @@
                 <li>✔️ コードブロックとインラインコード</li>
                 <li>✔️ リンク（URL内の括弧にも対応）</li>
                 <li>✔️ 内部リンク [[ページ名]] と [[ページ名|表示名]]</li>
+                <li>✔️ 見出しにアンカー自動付与 & 目次生成</li>
             </ul>
             <p style="margin-top: 15px; color: #666;">
                 <strong>Classic Wiki:</strong> 「HTMLをコピー」→ SharePointの「HTMLの編集」ボタン（&lt;&gt;）から貼り付け<br>
@@ -293,10 +296,54 @@
             // インラインコード
             result = result.replace(/`([^`]+)`/g, '<code style="background-color: #f5f5f5; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 0.9em;">$1</code>');
 
-            // 見出し
-            result = result.replace(/^### (.+)$/gm, '<h3 style="margin: 15px 0 10px 0;">$1</h3>');
-            result = result.replace(/^## (.+)$/gm, '<h2 style="margin: 20px 0 10px 0;">$1</h2>');
-            result = result.replace(/^# (.+)$/gm, '<h1 style="margin: 20px 0 15px 0;">$1</h1>');
+            // 見出し（アンカー付き）- 出現順を保持
+            const headings = [];
+            let headingIndex = 0;
+            
+            // テキストからアンカーIDを生成する関数
+            function textToAnchor(text) {
+                return text.toLowerCase()
+                    .replace(/[^\w\s-]/g, '') // 特殊文字を削除
+                    .replace(/\s+/g, '-')      // スペースをハイフンに
+                    .replace(/-+/g, '-')       // 連続するハイフンを1つに
+                    .replace(/^-|-$/g, '');    // 先頭と末尾のハイフンを削除
+            }
+            
+            // 行ごとに処理して順番を保持
+            const headingLines = result.split('\n');
+            for (let h = 0; h < headingLines.length; h++) {
+                let line = headingLines[h];
+                
+                if (line.match(/^#### /)) {
+                    const text = line.replace(/^#### /, '');
+                    const id = textToAnchor(text);
+                    headings.push({ level: 3, text: text, id: id });
+                    headingLines[h] = '<h3 id="' + id + '" style="margin: 15px 0 10px 0;">' + text + '</h3>';
+                    headingIndex++;
+                } else if (line.match(/^### /)) {
+                    const text = line.replace(/^### /, '');
+                    const id = textToAnchor(text);
+                    headings.push({ level: 2, text: text, id: id });
+                    headingLines[h] = '<h2 id="' + id + '" style="margin: 20px 0 10px 0;">' + text + '</h2>';
+                    headingIndex++;
+                } else if (line.match(/^## /)) {
+                    const text = line.replace(/^## /, '');
+                    const id = textToAnchor(text);
+                    headings.push({ level: 2, text: text, id: id });
+                    headingLines[h] = '<h2 id="' + id + '" style="margin: 20px 0 10px 0;">' + text + '</h2>';
+                    headingIndex++;
+                } else if (line.match(/^# /)) {
+                    const text = line.replace(/^# /, '');
+                    const id = textToAnchor(text);
+                    headings.push({ level: 1, text: text, id: id });
+                    headingLines[h] = '<h1 id="' + id + '" style="margin: 20px 0 15px 0;">' + text + '</h1>';
+                    headingIndex++;
+                }
+            }
+            result = headingLines.join('\n');
+            
+            // 目次を生成して保存
+            window.currentHeadings = headings;
 
             // 太字
             result = result.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
@@ -460,6 +507,128 @@
                 alert('コピーに失敗しました。Ctrl+Cを手動で押してみてください。');
             } finally {
                 // 選択を解除して非表示に戻す
+                selection.removeAllRanges();
+                richPreview.style.display = 'none';
+                richPreview.style.position = 'absolute';
+                richPreview.style.left = '-9999px';
+            }
+        }
+
+        function copyTableOfContents() {
+            if (!window.currentHeadings || window.currentHeadings.length === 0) {
+                alert('見出しが見つかりません。まず変換してください！');
+                return;
+            }
+
+            // 目次HTMLを生成
+            let tocHtml = '<div style="border: 1px solid #ddd; padding: 15px; background-color: #f9f9f9; border-radius: 6px; margin: 20px 0;"><h2 style="margin: 0 0 15px 0;">目次</h2>';
+            let currentLevel = 0;
+            const stack = [];
+
+            for (let i = 0; i < window.currentHeadings.length; i++) {
+                const heading = window.currentHeadings[i];
+                
+                // レベルが深くなる場合、新しいリストを開始
+                while (currentLevel < heading.level) {
+                    tocHtml += '<ul style="margin: 5px 0; padding-left: 25px; list-style-type: disc;">';
+                    stack.push('ul');
+                    currentLevel++;
+                }
+                
+                // レベルが浅くなる場合、リストを閉じる
+                while (currentLevel > heading.level) {
+                    tocHtml += '</' + stack.pop() + '>';
+                    currentLevel--;
+                }
+                
+                // リンク付きリストアイテムを追加
+                tocHtml += '<li style="margin: 3px 0;"><a href="#' + heading.id + '" style="color: #2196F3; text-decoration: none;">' + heading.text + '</a></li>';
+            }
+            
+            // 残っているリストを全て閉じる
+            while (stack.length > 0) {
+                tocHtml += '</' + stack.pop() + '>';
+            }
+            
+            tocHtml += '</div>';
+
+            // クリップボードにコピー
+            navigator.clipboard.writeText(tocHtml).then(function() {
+                const btn = document.getElementById('copyTocBtn');
+                const originalText = btn.textContent;
+                btn.textContent = '✅ 目次コピー完了！';
+                btn.classList.add('copied');
+                
+                setTimeout(function() {
+                    btn.textContent = originalText;
+                    btn.classList.remove('copied');
+                }, 2000);
+            }).catch(function(err) {
+                alert('コピーに失敗しました: ' + err);
+            });
+        }
+
+        function copyTableOfContentsRich() {
+            if (!window.currentHeadings || window.currentHeadings.length === 0) {
+                alert('見出しが見つかりません。まず変換してください！');
+                return;
+            }
+
+            // 目次HTMLを生成
+            let tocHtml = '<div style="border: 1px solid #ddd; padding: 15px; background-color: #f9f9f9; border-radius: 6px; margin: 20px 0;"><h2 style="margin: 0 0 15px 0;">目次</h2>';
+            let currentLevel = 0;
+            const stack = [];
+
+            for (let i = 0; i < window.currentHeadings.length; i++) {
+                const heading = window.currentHeadings[i];
+                
+                while (currentLevel < heading.level) {
+                    tocHtml += '<ul style="margin: 5px 0; padding-left: 25px; list-style-type: disc;">';
+                    stack.push('ul');
+                    currentLevel++;
+                }
+                
+                while (currentLevel > heading.level) {
+                    tocHtml += '</' + stack.pop() + '>';
+                    currentLevel--;
+                }
+                
+                tocHtml += '<li style="margin: 3px 0;"><a href="#' + heading.id + '" style="color: #2196F3; text-decoration: none;">' + heading.text + '</a></li>';
+            }
+            
+            while (stack.length > 0) {
+                tocHtml += '</' + stack.pop() + '>';
+            }
+            
+            tocHtml += '</div>';
+
+            // HTMLをDOMに描画してリッチテキストとしてコピー
+            const richPreview = document.getElementById('richPreview');
+            richPreview.innerHTML = tocHtml;
+            richPreview.style.display = 'block';
+            richPreview.style.position = 'static';
+
+            const range = document.createRange();
+            range.selectNodeContents(richPreview);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+
+            try {
+                document.execCommand('copy');
+                
+                const btn = document.getElementById('copyTocRichBtn');
+                const originalText = btn.textContent;
+                btn.textContent = '✅ コピー完了！';
+                btn.classList.add('copied');
+                
+                setTimeout(function() {
+                    btn.textContent = originalText;
+                    btn.classList.remove('copied');
+                }, 2000);
+            } catch (err) {
+                alert('コピーに失敗しました。Ctrl+Cを手動で押してみてください。');
+            } finally {
                 selection.removeAllRanges();
                 richPreview.style.display = 'none';
                 richPreview.style.position = 'absolute';
